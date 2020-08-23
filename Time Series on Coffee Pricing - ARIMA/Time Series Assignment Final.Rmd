@@ -1,0 +1,192 @@
+---
+title: "Time Series Assignment"
+author: 'Akshay Amrit (E20004), Shivam Babbar (E20032), Prashantha Shivshankarrao (E20022), Shruti Nair (E20033)'
+date: "26/07/2020"
+output: html_document
+---
+
+## Summary
+In this report we wil be applying various time series function which will be appropriate
+for the dataset used. The objective of this assignment is to learn and apply the
+concepts learned in our time series classes.
+
+We will be using 'Coffee Prices' dataset for this project which is available in 'TSstudio' 
+package. This package contains price of 2 types of coffee namely 'Robusta', 'Arabica'. We
+will focus on 'Robusta' for the rest of the assignment. 
+
+We will begin with basic data exploration and move on to using acf and pacf for 
+the dataset to figure out the differencing and lag required to make the data stationary.
+We will fit the ARIMA model using appropriate parameters on it as there is no 
+seasonality in the dataset. We willl compare this model with Naive model to compare 
+the accuracy. This will help us confirm that our model is better than the most basic 
+time series forecasting model.
+
+
+## Loading and Data Exporation of Data
+### Loading Required Libraries and Data:
+```{r results='hide', message=FALSE, warning=FALSE}
+library(tseries)
+library(forecast)
+library(TSstudio)
+data(Coffee_Prices)
+```
+
+### Data Cleanup and Train-Test Split:
+```{r}
+ts_info(Coffee_Prices)
+head(Coffee_Prices)
+```
+
+Looking at the output, we can figure out that the data is in multiple time series format 
+and has 701 rows. We will have to convert into time series format by subsetting the first 
+column. The time series we have has been recorded at monthly interval starting from Jan 1960 
+to May 2018. 
+
+Using the data starting from 1960 doesn't make sense as that data is too old to be relevant so 
+we will use the data starting from Jan 2000.
+```{r}
+#subsetting Robusta coffee from 2000-Jan to end of series
+robusta_price <- window(Coffee_Prices[,1], start = c(2000, 1))
+ts_info(robusta_price)
+```
+
+We would like to check our model after fitting the model. To do that, we'll split 
+the data into train and test. As we are creating a time series model, we won't be taking 
+out test sample randomly. We have decided to pull out the data for last 12 months for the test 
+split.
+```{r}
+robusta_price_split <- ts_split(robusta_price, sample.out = 12)
+
+train <- robusta_price_split$train
+test <- robusta_price_split$test
+```
+
+### Data Exploration:
+In this section, we are going to check for stationarity and how to make it stationary. 
+We cannot work on a time series if it is not stationary so this step is crucial for creating 
+a time series model.
+Let us start with taking a look at the data.
+```{r echo=FALSE, warning=FALSE}
+# Plot the training data
+ts_plot(train,
+        title = "The Robusta Coffee Monthly Prices-Training",
+        Ytitle = "Price in USD",
+        Xtitle = "Year") 
+```
+
+Using the above plot, we can observe that the time series data definitely has a trend 
+and therefore, isn't stationary. We did not observe any seasonality so we are going to fit 
+ARIMA model on it. 
+
+We'll take different differencing and perform Augmented Dicky-Fuller test to choose 
+the right degree of differencing.
+```{r warning=FALSE}
+p_value = c()
+for (i in 1:5) {
+     difference_ts = diff(train, differences = i)
+     test_result = adf.test(difference_ts)
+     p_value[i] = test_result$p.value
+}
+print(data.frame(difference_degree = 1:5, p_value))
+```
+From the above result, we can conclude that differencing of degree 1 is enough to 
+make our dataset stationary. We will use the differenced data set from here on to build 
+our model.
+
+Let us take a look at what our dataset looks like after differencing.
+```{r echo=FALSE}
+#differencing to remove the trend
+train_d1 <- diff(train)
+ts_plot(train_d1)
+```
+
+## Model Fitting
+Now that we have made our data stationary, let us find out the lag to fit our model. 
+We will need to look at the acf and pacf plot to figure this out.
+```{r}
+acf(train_d1, lag.max = 20)
+acf(train_d1, plot = FALSE, lag.max = 20)
+pacf(train_d1, lag.max = 20)
+pacf(train_d1, plot = FALSE, lag.max = 20)
+```
+
+The ACF and PACF plots of the first difference of the series indicate that an AR(1) 
+process is appropriate to use on the differenced series since the ACF is tailing off 
+and the PACF cuts on the first lag. Therefore, we will apply an ARIMA(1,1,0) model 
+on the robusta_price. 
+```{r}
+#fitting the arima  model
+robusta_md <- arima(train, order = c(1, 1, 0))
+#Summary
+summary(robusta_md)
+```
+The result will provide the estimate of element of AR(1) model. 
+The full model after reading summary:
+(Yt –Yt-1) = 0.2824(Yt-1 – Yt-2)  + εt
+
+## Diagnostic checking
+The procedure includes observing residual plot and its ACF & PACF diagram, and 
+check Ljung-Box result. If ACF & PACF of the model residuals show no significant 
+lags, the selected model is appropriate.
+
+```{r}
+checkresiduals(robusta_md)
+```
+
+Overall, the plot of the model's residuals and Ljung-Box test indicate that the 
+residuals are white noise.The ACF plot indicate that there are some correlated lags, 
+but they are only on the border of being significant and so we can ignore them.
+Ljung-Box test also provides a different way to double check the model. 
+Basically,Ljung-Box is a test of autocorrelation in which it verifies whether the 
+autocorrelations of a time series are different from 0.
+
+The p-values is greater than 0.05, so we cannot reject the hypothesis that the autocorrelation 
+is different from 0. Therefore, the selected model is an appropriate for this dataset.
+
+## Forecasting
+forecasting and plotting for 12 months
+```{r}
+robusta_fc <- forecast(robusta_md, h = 12)
+robusta_test_fc <- forecast(robusta_md, h = 12)
+plot_forecast(robusta_fc,
+              title = "coffee prices - Forecast")
+```
+
+plotting the forecast data against test data
+
+```{r}
+test_forecast(robusta_price, 
+              forecast.obj = robusta_test_fc,
+              test = test)
+```
+
+checking for accuracy against the test data
+```{r}
+arima_acc = accuracy(robusta_test_fc, test)
+print(data.frame(RMSE = arima_acc[c(3,4)], MAPE = arima_acc[c(9,10)], row.names = c('Training Set', 'Test set')))
+```
+
+Here we could see Mean absolute percentage error [MAPE] between train and test to 
+be at 4.36 and 7.05 % error. Lets compare that with NAIVE model.
+```{r}
+naive_model <- naive(train, h  = 12)
+test_forecast(actual = robusta_price,
+              forecast.obj = naive_model,
+              test = test)
+```
+
+checking for accuracy against the test data
+```{r}
+naive_acc = accuracy(naive_model, test)
+print(data.frame(RMSE = naive_acc[c(3,4)], MAPE = naive_acc[c(9,10)], row.names = c('Training Set', 'Test set')))
+```
+
+Here we could see Mean absolute percentage error [MAPE] between train and test to 
+be at 4.34 and 7.62 % error. When we compare this to the accuracy observed in ARIMA, 
+we can conclude that ARIMA model gives us better result.
+
+
+## References
+1. Krispin, Rami. Hands-On Time Series Analysis with R: Perform time series analysis 
+and forecasting using R. Packt Publishing.
+2. Class Notes :)
