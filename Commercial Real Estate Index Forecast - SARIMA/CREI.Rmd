@@ -1,0 +1,173 @@
+---
+title: "Time Series Forecasting for Commercial Real Estate Price Index"
+author: "Akshay Amrit (E20004), Shivam Babbar (E20032), Prashantha Shivshankarrao (E20022), Shruti Nair (E20033), Aman Gupta (E20005), Mohammed Arshan Khan (E20015), Rohit Krishnarao Umredkar (E20025)"
+date: "01/09/2020"
+output: html_document
+---
+
+## Problem Statement
+In commercial real estate, price indices are designed to show the current strength of the commercial real estate market across the United States.This project is an attempt to forecast the Commercial Real Estate Price Index.
+We had a a quarterly record of the SIOR CREI from January, 2004 to December, 2022. Created in 2014, the US CREI is one of the most regularly updated CRE price indexes on the market today. It was created  by CRE Demographics, LLC, and examines eight economic drivers in order to determine relative market strength. 
+
+## Purpose of Study
+As a commercial investor, you may not be able to predict the market using a commercial real estate price index, but you can certainly get some valuable insight into where it may be headed. Like other types of investors, many of the smartest commercial real estate investors attempt to “buy low and sell high.” For example, if property appreciation is your goal, you may be hesitant to buy if commercial real estate prices have gone up for the last 3-4 years straight, as they could decline soon. However, individual property value is essential; and so are local market factors. This means that overall CRE prices are simply one piece of data that investors and developers can utilize to gain a balanced perspective before making a business decision. 
+
+
+## Loading and Data Exploration
+### Loading Required Libraries and Data:
+```{r results='hide', message=FALSE, warning=FALSE}
+library(readxl)
+library(tseries)
+library(forecast)
+library(TSstudio)
+#setwd("C:/Users/WIN8/Desktop/PGDS 2020/FINA")
+cre <- read_excel("Praxis workshop_MEV.xlsx", skip = 22, n_max = 1)
+```
+
+## Converting data to time series format
+```{r}
+cre <- unlist(cre[4:ncol(cre)], use.names = F)
+cre <- ts(cre, start = c(2004, 1), frequency = 12)
+ts_info(cre)
+```
+
+## Train-Test Split:
+```{r}
+train <- window(cre, start = c(2004, 1), end = c(2017, 12))
+test.data <- window(cre, start = c(2018, 1), end = c(2018, 12))
+```
+
+We would like to check our model after fitting the model. To do that, we'll split 
+the data into train and test. As we are creating a time series model, we won't be taking out test sample randomly. We have decided to pull out the data of the four quarters of 2018 for the test split. Our train sample consists of monthly data from 
+2004 to 2017.
+
+### Data Exploration:
+In this section, we are going to check for stationarity and how to make it stationary. 
+We cannot work on a time series if it is not stationary so this step is crucial for creating 
+a time series model.
+Let us start with taking a look at the data.
+```{r echo=FALSE, warning=FALSE}
+ts_plot(train,
+        title = "Commercial Real Estate Price Index-Training",
+        Ytitle = "Price Index",
+        Xtitle = "Year")
+```
+
+Using the above plot, we can observe that the time series data definitely has a trend 
+and therefore, isn't stationary. Let us decompose the time series and check if we have any seasonality.
+
+```{r}
+autoplot(decompose(train))
+```
+
+We observe some seasonality in the data. So we'll take different differencing and perform Augmented Dicky-Fuller test to choose the right degree of differencing.
+
+```{r warning=FALSE}
+for (i in 1:5) {
+     differenced <- diff(train, differences = i)
+     test_result <- suppressWarnings(adf.test(differenced))
+     print(paste('Difference',i, ':    ', test_result$p.value))
+}
+```
+
+From the above result, we can conclude that differencing of degree 1 is enough to 
+make our dataset stationary. We will use the differenced data set from here on to build
+our model.
+
+Let us take a look at what our dataset looks like after differencing.
+```{r echo=FALSE}
+#differencing to remove the trend
+train.diff <- diff(train, differences = 1)
+ts_plot(train.diff)
+```
+
+## Model Fitting
+Now that we have made our data stationary, let us find out the lag to fit our model. 
+We will need to look at the acf and pacf plot to figure this out.
+
+```{r}
+acf(train.diff, lag.max = 20)
+acf(train.diff, plot = FALSE, lag.max = 20)
+pacf(train.diff, lag.max = 20)
+pacf(train.diff, plot = FALSE, lag.max = 20)
+```
+The ACF and PACF plots of the first difference of the series indicate that an AR(1) 
+process is appropriate to use on the differenced series since the ACF is tailing off 
+and the PACF cuts on the first lag. Therefore, we will apply an ARIMA(1,1,0) model 
+on the CREI. 
+
+```{r}
+crei <- arima(train, order = c(1,1,0))
+
+#Summary
+summary(crei)
+```
+The result will provide the estimate of element of AR(1) model. 
+
+Let us now remove the seasonality of the data by seasonal differencing.
+
+```{r, warning=FALSE}
+train.diff.seasonal <-diff(train, differences = 12)
+adf.test(train.diff.seasonal)
+```
+The ACF and PACF plots of the seasonaly differenced time series indicate that P = 3 and Q = 4 
+is appropriate to use on the differenced series. ACF and PACF plots do give us a 
+general idea of the order to be used but it is not absolutely correct. With some experimentation, 
+we found out that Q = 1 gives us a better AIC for this dataset so we have opted to go 
+with it instead.
+```{r}
+acf(train.diff.seasonal, lag.max = 20)
+acf(train.diff.seasonal, plot = FALSE, lag.max = 20)
+pacf(train.diff.seasonal, lag.max = 20)
+pacf(train.diff.seasonal, plot = FALSE, lag.max = 20)
+```
+
+### SARIMA
+
+```{r}
+final.model <- arima(train, order = c(1,1,0), seasonal = list(order = c(0,0,1), period = 12))
+summary(final.model)
+```
+
+## Diagnostic Check
+The procedure includes observing residual plot and its ACF & PACF diagram, and 
+check Ljung-Box result. If ACF & PACF of the model residuals show no significant 
+lags, the selected model is appropriate.
+```{r}
+checkresiduals(final.model)
+```
+Overall, the plot of the model's residuals and Ljung-Box test indicate that the 
+residuals are white noise.The ACF plot indicate that there are no lags. 
+Ljung-Box test also provides a different way to double check the model. 
+Basically,Ljung-Box is a test of autocorrelation in which it verifies whether the 
+autocorrelations of a time series are different from 0.
+
+The p-values is greater than 0.05, so we cannot reject the hypothesis that the autocorrelation 
+is different from 0. Therefore, the selected model is an appropriate for this dataset.
+
+## Forecasting
+forecasting and plotting for 12 months
+```{r}
+plot_forecast(forecast_obj = forecast(final.model, h = 12))
+```
+
+### SARIMA
+Let us check the accuracy of our forecast.
+```{r}
+accuracy(forecast(final.model, h =12), test.data)
+CREI_2004_to_2018 <- window(cre, start = c(2004, 1), end = c(2018, 12))
+test_forecast(CREI_2004_to_2018, forecast.obj =
+                forecast(final.model, h = 12), test = test.data)
+```
+We got a MAPE of 1.528 and an RMSE of 5.713.
+
+### STL
+Let us compare our model with a simple STL model.
+```{r}
+stl.model <- stl(train, s.window = 'periodic')
+accuracy(forecast(stl.model, h = 12), test.data)
+test_forecast(CREI_2004_to_2018, forecast.obj = forecast(stl.model, h = 12), test = test.data)
+```
+Here we could see Mean absolute percentage error MAPE between train and test to 
+be at 0.45% and 1.76% error. When we compare this to the accuracy observed in SARIMA, 
+we can conclude that SARIMA model gives us better result.
