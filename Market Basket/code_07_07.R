@@ -34,3 +34,20 @@ rules<-apriori(Transaction,parameter = list(support = 0.004, conf = 0.8), appear
 ?apriori
 summary(rules)
 inspect(rules)
+
+#1. Execute market basket with supp=0.01, conf=0.8 and answer below question
+#    a) What is the support for {BACK DOOR}  => {KEY FOB}  
+rules<-apriori(Transaction,parameter = list(support = 0.01, conf = 0.8), appearance = list(lhs = 'BACK DOOR', rhs = 'KEY FOB'))
+inspect(rules)
+
+#    b) What is the confidence for  {COFFEE} => {SUGAR}
+rules<-apriori(Transaction,parameter = list(support = 0.01, conf = 0.8), appearance = list(lhs = 'COFFEE', rhs = 'SUGAR'))
+inspect(rules)
+
+#2. supp=0.001, conf=0.8 what are the items with which metal are purchased
+rules<-apriori(Transaction,parameter = list(support = 0.001, conf = 0.8), appearance = list(rhs = 'METAL'))
+inspect(rules)
+
+#3. supp=0.004, conf=0.8 what are the items that are purchased with coffee
+rules<-apriori(Transaction,parameter = list(support = 0.004, conf = 0.8), appearance = list(lhs = 'COFFEE'))
+inspect(rules)
